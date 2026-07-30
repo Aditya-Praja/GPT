@@ -74,6 +74,57 @@ class CausalSelfAttentionHead(nn.Module):
         
         return output
 
+class MultiHeadCasualSelfAttention(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        block_size: int,
+        dropout: float = 0.1
+    ):
+        super().__init__()
+        
+        if embedding_dim % num_heads != 0:
+            raise ValueError(
+                "Embedding dimension must be divisible by the number of heads."
+            )
+        
+        self.head_dim = embedding_dim // num_heads
+        
+        self.heads = nn.ModuleList([
+            CausalSelfAttentionHead(
+                embedding_dim,
+                self.head_dim,
+                block_size,
+                dropout
+            )
+            for _ in range(num_heads)
+        ])
+        
+        self.output_projection = nn.Linear(
+            embedding_dim,
+            embedding_dim
+        )
+        
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
+        
+        heads = [
+            head(x)
+            for head in self.heads
+        ]
+        
+        heads_concat = torch.cat(heads, dim=-1)
+        
+        output = self.output_projection(heads_concat)
+        output = self.dropout(output)
+        
+        return output
+
 class CharacterGPT(nn.Module):
     def __init__(
         self,

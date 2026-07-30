@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 import math
+from typing import Optional, Tuple
 
 class CausalSelfAttentionHead(nn.Module):
     def __init__(
@@ -230,8 +231,8 @@ class CharacterGPT(nn.Module):
     def forward(
         self,
         token_ids: torch.Tensor,
-        target: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+        target: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         batch_size, seq_length = token_ids.size()
         

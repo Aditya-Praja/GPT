@@ -150,7 +150,7 @@ def train_one_epoch(
         
         optimizer.zero_grad()
         
-        _, loss = (inputs, targets)
+        _, loss = model(inputs, targets)
         
         if loss is None:
             raise RuntimeError(
@@ -161,10 +161,11 @@ def train_one_epoch(
         
         optimizer.step()
         
-        train_loss += loss.item()
+        total_loss += loss.item()
         
-    return train_loss / len(dataloader)
+    return total_loss / len(dataloader)
 
+@torch.no_grad()
 def evaluate(
     model: CharacterGPT,
     dataloader: DataLoader,
@@ -175,18 +176,18 @@ def evaluate(
     
     total_loss = 0.0
     
-    with torch.no_grad():
-        
-        for inputs, targets in dataloader:
-            
-            _, loss = model(inputs, targets)
-            
-            if loss is None:
-                raise RuntimeError(
-                    "The model did not return a evalutation loss."
-                )      
-            
-            total_loss += loss.item()
+    for inputs, targets in dataloader:
+        inputs = inputs.to(device)
+        targets = targets.to(device)
+
+        _, loss = model(inputs, targets)
+
+        if loss is None:
+            raise RuntimeError(
+                "The model did not return a evaluation loss."
+            )
+
+        total_loss += loss.item()
     
     return total_loss / len(dataloader)
 
@@ -209,7 +210,7 @@ def main() -> None:
         char_to_idx
     )
     
-    encoded_text = torch.tensor(encoded_text, dtype=torch.long).to(device)
+    encoded_text = encoded_text.to(device=device, dtype=torch.long)
     
     training_dataloader, validation_dataloader = create_dataloaders(
         encoded_text,

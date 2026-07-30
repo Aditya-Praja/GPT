@@ -74,7 +74,7 @@ class CausalSelfAttentionHead(nn.Module):
         
         return output
 
-class MultiHeadCasualSelfAttention(nn.Module):
+class MultiHeadCausalSelfAttention(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
@@ -124,13 +124,77 @@ class MultiHeadCasualSelfAttention(nn.Module):
         output = self.dropout(output)
         
         return output
+    
+class FeedForward(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        dropout: float = 0.1
+    ):
+        super().__init__()
+        
+        hidden_dim = 4 * embedding_dim
+        
+        self.net = nn.Sequential(
+            nn.Linear(embedding_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, embedding_dim),
+            nn.Dropout(dropout)
+        )
+        
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
+        
+        return self.net(x)
+    
+    
+class TransformerBlock(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_heads: int,
+        block_size: int,
+        dropout: float = 0.1
+    ):
+        super().__init__()
+        
+        self.layer_norm1 = nn.LayerNorm(embedding_dim)
+        
+        self.attention = MultiHeadCausalSelfAttention(
+            embedding_dim,
+            num_heads,
+            block_size,
+            dropout
+        )
+        
+        self.layer_norm2 = nn.LayerNorm(embedding_dim)
+        
+        self.feed_forward = FeedForward(
+            embedding_dim,
+            dropout
+        )
+        
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
+        
+        x = x + self.attention(self.layer_norm1(x))
+        x = x + self.feed_forward(self.layer_norm2(x))
+        
+        return x
 
 class CharacterGPT(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        block_size: int,
         embedding_dim: int,
+        num_heads: int,
+        num_layers: int,
+        block_size: int,
+        dropout: float = 0.1,
     ) -> None:
         super().__init__()
         
@@ -146,9 +210,27 @@ class CharacterGPT(nn.Module):
             embedding_dim
         )
         
+        self.transformer_blocks = nn.Sequential(*[
+            TransformerBlock(
+                embedding_dim,
+                num_heads,
+                block_size,
+                dropout
+            )
+            for _ in range(num_layers)
+        ])
+        
+        self.final_layer_norm = nn.LayerNorm(embedding_dim)
+        
+        self.language_model_head = nn.Linear(
+            embedding_dim,
+            vocab_size
+        )
+        
     def forward(
         self,
-        token_ids: torch.Tensor
+        token_ids: torch.Tensor,
+        target: torch.Tensor | None = None,
     ) -> torch.Tensor:
         
         batch_size, seq_length = token_ids.size()
@@ -169,4 +251,17 @@ class CharacterGPT(nn.Module):
         
         embeddings = token_embeddings + position_embeddings
         
-        return embeddings
+        x = self.transformer_blocks(embeddings)
+        x = self.final_layer_norm(x)
+        logits = self.language_model_head(x)
+        loss = None
+        
+        if target is not None:
+            batch_size, seq_length, vocab_size = logits.size()
+            logits_flat = logits.reshape(batch_size * seq_length, vocab_size)
+            target_flat = target.reshape(batch_size * seq_length)
+            
+            loss = nn.functional.cross_entropy(logits_flat, target_flat)
+        
+        
+        return logits, loss

@@ -265,3 +265,26 @@ class CharacterGPT(nn.Module):
         
         
         return logits, loss
+    
+    @torch.no_grad()
+    def generate(
+        self,
+        token_ids: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+    ) -> torch.Tensor:
+        
+        self.eval()
+        
+        for _ in range(max_new_tokens):
+            
+            context = token_ids[:, -self.block_size:]
+            
+            logits, _ = self(context)
+            
+            logits = logits[:, -1, :] / temperature
+            probabilities = torch.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probabilities, num_samples=1)
+            token_ids = torch.cat([token_ids, next_token], dim=1)
+        
+        return token_ids
